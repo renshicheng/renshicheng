@@ -67,7 +67,7 @@ class TcpServer:
                 self.search(client)
 
             else:
-                send_msg = self.clients_d[client]['name'] + " " + time.ctime() + "\n" + recv_data
+                send_msg = self.clients_d[client]['name'] + " " + time.ctime() + "\n" + msg
                 self.send_channel(send_msg, self.client_channel[client])
 
     def send_broadcast(self, msg: str, client=None):
