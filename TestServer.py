@@ -1,15 +1,10 @@
 import socket
 import threading
 import time
+import config
 from typing import Optional, Dict, List
 
-
-ADDRESS = ('localhost', 20007)
 IP_ADDRESS = ('192.168.50.206', 20008)
-SERVER_MSG = '与服务器连接成功，请输入你的昵称:'
-CHANNEL_MSG = '请输入要聊天的频道名:'
-ENTER_MSG = '进入了聊天室'
-QUIT_MSG = '离开了聊天室'
 
 
 class TcpServer:
@@ -31,51 +26,49 @@ class TcpServer:
         self.server.listen(5)
         self.con_thread = threading.Thread(target=self.get_connect, daemon=True)
         self.con_thread.start()
-        self.thread1: Optional[threading.Thread] = None
-        self.thread2: Optional[threading.Thread] = None
-        self.thread3: Optional[threading.Thread] = None
+        self.thread: Optional[threading.Thread] = None
 
     def get_connect(self):
         while True:
             client, addr = self.server.accept()
-            client.send(SERVER_MSG.encode())
-            self.thread1 = threading.Thread(target=self.recv_name, args=(client, addr))
-            self.thread1.start()
+            client.send((config.SERVER_CONNECT_SUCCESS_MSG + ',' + config.NEED_NAME_INPUT).encode('utf-8'))
+            self.thread = threading.Thread(target=self.deal_msg, args=(client, addr))
+            self.thread.start()
 
-    def recv_name(self, client, addr):
-        name = client.recv(1024).decode('utf-8')
-        # self.clients_d[client]['name'] = name
-        self.clients_d[client] = {'name': name, 'addr': addr}
-        self.open_client(name)
-        self.name_list.append(name)
-        self.thread2 = threading.Thread(target=self.recv_channel, args=(client,))
-        self.thread2.start()
-
-    def recv_channel(self, client):
-        client.send(CHANNEL_MSG.encode())
-        channel = client.recv(1024).decode('utf-8')
-        self.client_channel[client] = channel
-        self.channel_list.append(channel)
-        if channel not in self.channel_d.keys():
-            self.channel_d[channel] = [client]
-            self.send_broadcast(self.clients_d[client]['name'] + '创建了频道:' + channel)
-        else:
-            self.channel_d[channel].append(client)
-            self.send_broadcast(self.clients_d[client]['name'] + '加入了频道:' + channel)
-        self.thread3 = threading.Thread(target=self.deal_msg, args=(client,))
-        self.thread3.start()
-
-    def deal_msg(self, client):
+    def deal_msg(self, client, addr):
+        self.clients_d[client] = {}
         while True:
             recv_data = client.recv(1024).decode('utf-8')
-            if recv_data.lower() == 'exit' or not recv_data:
+            coding = recv_data[0:4]
+            msg = recv_data[4:]
+            if coding in config.CODE_MSG_NAME:
+                name = msg
+                self.clients_d[client] = {'name': name, 'addr': addr}
+                self.open_client(name)
+                self.name_list.append(name)
+                client.send(config.NEED_CHANNEL_INPUT.encode('utf-8'))
+
+            elif coding in config.CODE_MSG_CHANNEL:
+                channel = msg
+                self.client_channel[client] = channel
+                self.channel_list.append(channel)
+                if channel not in self.channel_d.keys():
+                    self.channel_d[channel] = [client]
+                    self.send_broadcast(self.clients_d[client]['name'] + config.CHANNEL_SET + channel)
+                else:
+                    self.channel_d[channel].append(client)
+                    self.send_broadcast(self.clients_d[client]['name'] + config.CHANNEL_JOIN + channel)
+
+            elif coding in config.CODE_MSG_CONTENT_EXIT:
                 self.close_client(client)
                 break
-            elif recv_data.lower() == 'ls':
+
+            elif coding in config.CODE_MSG_CONTENT_LS:
                 self.search(client)
+
             else:
-                msg = self.clients_d[client]['name'] + " " + time.ctime() + "\n" + recv_data
-                self.send_channel(msg, self.client_channel[client])
+                send_msg = self.clients_d[client]['name'] + " " + time.ctime() + "\n" + recv_data
+                self.send_channel(send_msg, self.client_channel[client])
 
     def send_broadcast(self, msg: str, client=None):
         if client is not None:
@@ -86,7 +79,7 @@ class TcpServer:
 
     def send_channel(self, msg: str, channel):
         for c in self.channel_d[channel]:
-            c.send(('频道'+channel+':'+msg).encode('utf-8'))
+            c.send(('频道' + channel + ':' + msg).encode('utf-8'))
 
     def search(self, client):
         msg = ""
@@ -97,17 +90,20 @@ class TcpServer:
         self.send_broadcast(msg, client)
 
     def open_client(self, name):
-        print(name + ENTER_MSG)
+        print(name + config.ENTER_MSG)
         for c in self.clients_d.keys():
-            c.send((name + ENTER_MSG + "\n").encode('utf-8'))
+            c.send((name + config.ENTER_MSG + "\n").encode('utf-8'))
 
     def close_client(self, client):
-        name = self.clients_d[client]['name']
-        print(name + QUIT_MSG)
+        if "name" in self.clients_d[client].keys():
+            name = self.clients_d[client]['name']
+            for c in self.clients_d.keys():
+                if c == client:
+                    continue
+                c.send((name + config.QUIT_MSG + "\n").encode('utf-8'))
+            print(name + config.QUIT_MSG)
         del self.clients_d[client]
         client.close()
-        for c in self.clients_d.keys():
-            c.send((name + QUIT_MSG + "\n").encode('utf-8'))
 
     def exit(self):
         self.send_broadcast('服务端退出！')

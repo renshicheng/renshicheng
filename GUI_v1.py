@@ -16,17 +16,18 @@ class Controller(QMainWindow):
         # signal connect
         self.client.sign_msg_recv.connect(self.receive)
         self.ui.Send.clicked.connect(self.send)
-        self.ui.Text.editingFinished.connect(self.send)
+        self.ui.Text.returnPressed.connect(self.send)
         # client connect
         self.client.connect()
 
     def send(self):
         msg = self.ui.Text.text()
-        if msg == 'exit':
-            self.close()
-        else:
-            self.client.send(msg)
-            self.ui.Text.clear()
+        if msg:
+            if msg == 'exit':
+                self.close()
+            else:
+                self.client.send(msg)
+                self.ui.Text.clear()
 
     def receive(self, data_str: str):
         self.ui.Content.addItem(data_str)
